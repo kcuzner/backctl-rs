@@ -5,7 +5,7 @@ extern crate clap;
 #[macro_use]
 extern crate error_chain;
 
-use clap::App;
+use clap::{App, Arg};
 
 use std::{fs, io, num};
 use std::io::{Write, Read};
@@ -78,13 +78,57 @@ impl Iterator for Backlights {
     }
 }
 
+struct Update {
+    relative: bool,
+    value: i32,
+}
+
+impl Update {
+    fn new(spec: &str) -> Result<Self> {
+        let (rel, pos, valstr) = match spec.chars().next().unwrap() {
+            '+' => (true, true, &spec[1..]),
+            '-' => (true, false, &spec[1..]),
+            _ => (false, true, spec),
+        };
+        let mut val: i32 = valstr.trim().parse()?;
+        if !pos {
+            val *= -1;
+        }
+        Ok(Update { relative: rel, value: val })
+    }
+
+    fn apply(&self, backlight: Backlight) -> Result<Backlight> {
+        let mut value = if self.relative {
+            let original = backlight.get_brightness()? as i32;
+            original + self.value
+        } else {
+            self.value
+        };
+        let max = backlight.get_max_brightness()? as i32;
+        if value > max {
+            value = max;
+        }
+        if value < 0 {
+            value = 0;
+        }
+        backlight.set_brightness(value as u32)
+            .and_then(|()| Ok(backlight))
+    }
+}
+
 fn main() {
     let matches = App::new("Backlight Control")
         .author("Kevin Cuzner <kevin@kevincuzner.com>")
         .about("Sets the backlight brightness through sysfs")
+        .arg(Arg::with_name("VALUE")
+             .help("Backlight value. Use +/- for relative values.")
+             .required(true))
         .get_matches();
 
+    let valuecmd = matches.value_of("VALUE").unwrap();
+    let update = Update::new(&valuecmd).unwrap();
+
     for bl in Backlights::new().unwrap() {
-        println!("{}", bl.get_max_brightness().unwrap());
+        update.apply(bl).unwrap();
     }
 }
