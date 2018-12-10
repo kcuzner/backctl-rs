@@ -4,3 +4,7 @@ version = "0.1.0"
 authors = ["Kevin Cuzner <kevin@kevincuzner.com>"]
 
 [dependencies]
+error-chain = "0.12"
+udev="0.2"
+clap="2.32"
+
