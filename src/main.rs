@@ -9,7 +9,7 @@ use clap::App;
 
 use std::{fs, io, num};
 use std::io::{Write, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 error_chain! {
     foreign_links {
@@ -20,28 +20,34 @@ error_chain! {
 }
 
 struct Backlight {
-    max_brightness: u32,
-    brightness: fs::File,
+    root: PathBuf,
 }
 
 impl Backlight {
-    fn new(path: &Path) -> Result<Self> {
-        let mut mb_file = fs::File::open(path.join(Path::new("max_brightness")))?;
-        let mut mb_buf = String::new();
-        mb_file.read_to_string(&mut mb_buf)?;
-        let mb: u32 = mb_buf.trim().parse()?;
-        let b_file = fs::OpenOptions::new()
+    fn new(path: &Path) -> Self {
+        Backlight { root: PathBuf::from(path) }
+    }
+
+    fn read_value(&self, property: &Path) -> Result<u32> {
+        let mut f = fs::File::open(self.root.as_path().join(property))?;
+        let mut buf = String::new();
+        f.read_to_string(&mut buf)?;
+        Ok(buf.trim().parse()?)
+    }
+
+    fn get_max_brightness(&self) -> Result<u32> {
+        self.read_value(Path::new("max_brightness"))
+    }
+
+    fn get_brightness(&self) -> Result<u32> {
+        self.read_value(Path::new("brightness"))
+    }
+
+    fn set_brightness(&self, brightness: u32) -> Result<()> {
+        let mut f = fs::OpenOptions::new()
             .write(true)
-            .open(path.join(Path::new("brightness")))?;
-        Ok(Backlight { max_brightness: mb, brightness: b_file })
-    }
-
-    fn get_max_brightness(&self) -> u32 {
-        self.max_brightness
-    }
-
-    fn set_brightness(mut self, brightness: u32) -> Result<()> {
-        self.brightness.write_all(&brightness.to_string().into_bytes())?;
+            .open(self.root.as_path().join("brightness"))?;
+        f.write_all(&brightness.to_string().into_bytes())?;
         Ok(())
     }
 }
@@ -62,7 +68,7 @@ impl Backlights {
 }
 
 impl Iterator for Backlights {
-    type Item = Result<Backlight>;
+    type Item = Backlight;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.iter.next() {
@@ -78,8 +84,7 @@ fn main() {
         .about("Sets the backlight brightness through sysfs")
         .get_matches();
 
-    for res in Backlights::new().unwrap() {
-        let bl = res.unwrap();
-        println!("{}", bl.get_max_brightness());
+    for bl in Backlights::new().unwrap() {
+        println!("{}", bl.get_max_brightness().unwrap());
     }
 }
