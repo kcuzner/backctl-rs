@@ -5,7 +5,7 @@ extern crate clap;
 #[macro_use]
 extern crate error_chain;
 
-use clap::{App, Arg};
+use clap::{App, Arg, SubCommand};
 
 use std::{fs, io, num};
 use std::io::{Write, Read};
@@ -84,17 +84,19 @@ struct Update {
 }
 
 impl Update {
-    fn new(spec: &str) -> Result<Self> {
-        let (rel, pos, valstr) = match spec.chars().next().unwrap() {
-            '+' => (true, true, &spec[1..]),
-            '-' => (true, false, &spec[1..]),
-            _ => (false, true, spec),
-        };
-        let mut val: i32 = valstr.trim().parse()?;
-        if !pos {
-            val *= -1;
-        }
-        Ok(Update { relative: rel, value: val })
+    fn set(valstr: &str) -> Result<Self> {
+        Update::new(false, valstr)
+    }
+    fn inc(valstr: &str) -> Result<Self> {
+        Update::new(true, valstr)
+    }
+    fn dec(valstr: &str) -> Result<Self> {
+        let mut res = Update::new(true, valstr)?;
+        res.value *= -1;
+        Ok(res)
+    }
+    fn new(relative: bool, valstr: &str) -> Result<Self> {
+        Ok(Update { relative: relative, value: valstr.trim().parse()? })
     }
 
     fn apply(&self, backlight: Backlight) -> Result<Backlight> {
@@ -120,15 +122,37 @@ fn main() {
     let matches = App::new("Backlight Control")
         .author("Kevin Cuzner <kevin@kevincuzner.com>")
         .about("Sets the backlight brightness through sysfs")
-        .arg(Arg::with_name("VALUE")
-             .help("Backlight value. Use +/- for relative values.")
-             .required(true))
+        .subcommand(SubCommand::with_name("inc")
+                    .help("Increments the backlight by some amount")
+                    .arg(Arg::with_name("VALUE")
+                         .required(true)))
+        .subcommand(SubCommand::with_name("dec")
+                    .help("Decrements the backlight by some amount")
+                    .arg(Arg::with_name("VALUE")
+                         .required(true)))
+        .subcommand(SubCommand::with_name("set")
+                    .help("Sets the backlight to the value")
+                    .arg(Arg::with_name("VALUE")
+                         .required(true)))
         .get_matches();
 
-    let valuecmd = matches.value_of("VALUE").unwrap();
-    let update = Update::new(&valuecmd).unwrap();
+    let update = if let Some(matches) = matches.subcommand_matches("inc") {
+        let valstr = matches.value_of("VALUE").unwrap();
+        Some(Update::inc(&valstr).unwrap())
+    } else if let Some(matches) = matches.subcommand_matches("dec") {
+        let valstr = matches.value_of("VALUE").unwrap();
+        Some(Update::dec(&valstr).unwrap())
+    } else if let Some(matches) = matches.subcommand_matches("set") {
+        let valstr = matches.value_of("VALUE").unwrap();
+        Some(Update::set(&valstr).unwrap())
+    } else {
+        None
+    };
 
-    for bl in Backlights::new().unwrap() {
-        update.apply(bl).unwrap();
+    match update {
+        Some(u) => for bl in Backlights::new().unwrap() {
+            u.apply(bl).unwrap();
+        },
+        _ => {},
     }
 }
