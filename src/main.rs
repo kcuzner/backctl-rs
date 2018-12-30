@@ -122,37 +122,27 @@ fn main() {
     let matches = App::new("Backlight Control")
         .author("Kevin Cuzner <kevin@kevincuzner.com>")
         .about("Sets the backlight brightness through sysfs")
-        .subcommand(SubCommand::with_name("inc")
-                    .help("Increments the backlight by some amount")
-                    .arg(Arg::with_name("VALUE")
-                         .required(true)))
-        .subcommand(SubCommand::with_name("dec")
-                    .help("Decrements the backlight by some amount")
-                    .arg(Arg::with_name("VALUE")
-                         .required(true)))
-        .subcommand(SubCommand::with_name("set")
-                    .help("Sets the backlight to the value")
-                    .arg(Arg::with_name("VALUE")
-                         .required(true)))
+        .arg(Arg::with_name("CMD")
+             .required(true)
+             .takes_value(true)
+             .possible_value("inc")
+             .possible_value("dec")
+             .possible_value("set"))
+        .arg(Arg::with_name("VALUE")
+             .required(true))
         .get_matches();
 
-    let update = if let Some(matches) = matches.subcommand_matches("inc") {
-        let valstr = matches.value_of("VALUE").unwrap();
-        Some(Update::inc(&valstr).unwrap())
-    } else if let Some(matches) = matches.subcommand_matches("dec") {
-        let valstr = matches.value_of("VALUE").unwrap();
-        Some(Update::dec(&valstr).unwrap())
-    } else if let Some(matches) = matches.subcommand_matches("set") {
-        let valstr = matches.value_of("VALUE").unwrap();
-        Some(Update::set(&valstr).unwrap())
-    } else {
-        None
+    let cmdstr = matches.value_of("CMD").expect("No command supplied");
+    let valstr = matches.value_of("VALUE").expect("No value supplied");
+
+    let update = match cmdstr.as_ref() {
+        "inc" => Update::inc(&valstr).expect("Unable to create increment update"),
+        "dec" => Update::dec(&valstr).expect("Unable to create decrement update"),
+        "set" => Update::set(&valstr).expect("Unable to create set update"),
+        _ => panic!("Invalid command supplied"),
     };
 
-    match update {
-        Some(u) => for bl in Backlights::new().unwrap() {
-            u.apply(bl).unwrap();
-        },
-        _ => {},
+    for bl in Backlights::new().unwrap() {
+        update.apply(bl).unwrap();
     }
 }
