@@ -80,6 +80,7 @@ impl Iterator for Backlights {
 
 struct Update {
     relative: bool,
+    percent: bool,
     value: i32,
 }
 
@@ -96,23 +97,32 @@ impl Update {
         Ok(res)
     }
     fn new(relative: bool, valstr: &str) -> Result<Self> {
-        Ok(Update { relative: relative, value: valstr.trim().parse()? })
+        Ok(Update { relative: relative, percent: valstr.contains('%'),  value: valstr.trim().trim_end_matches('%').parse()? })
     }
 
     fn apply(&self, backlight: Backlight) -> Result<Backlight> {
-        let mut value = if self.relative {
-            let original = backlight.get_brightness()? as i32;
-            original + self.value
-        } else {
-            self.value
-        };
         let max = backlight.get_max_brightness()? as i32;
+        let mut value = self.value;
+
+        // Step 1: Percent to brightness-units
+        if self.percent {
+            value = max * value / 100;
+        }
+
+        // Step 2: Relative to absolute
+        if self.relative {
+            let original = backlight.get_brightness()? as i32;
+            value += original;
+        }
+
+        // Step 3: Clamp to min/max
         if value > max {
             value = max;
         }
         if value < 0 {
             value = 0;
         }
+
         backlight.set_brightness(value as u32)
             .and_then(|()| Ok(backlight))
     }
